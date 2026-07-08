@@ -1,0 +1,38 @@
+[project]
+name = "sclifemamba"
+version = "0.1.0"
+description = "Trajectory-aware Mamba-LSTM framework for single-cell multi-omics lifecycle state modeling"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Wendong Du"}
+]
+keywords = [
+    "single-cell",
+    "multi-omics",
+    "CITE-seq",
+    "trajectory",
+    "pseudotime",
+    "Mamba",
+    "state-space-model",
+    "lifecycle",
+    "deep-learning",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+[project.urls]
+Homepage = "https://github.com/TheFinalDreamer/scLifeMamba"
+Repository = "https://github.com/TheFinalDreamer/scLifeMamba.git"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,58 @@
+project:
+  name: scLifeMamba
+  seed: 42
+  device: auto
+
+data:
+  mode: synthetic
+  num_cells: 2000
+  rna_dim: 2000
+  protein_dim: 30
+  num_classes: 5
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  label_key: cell_type
+  pseudotime_key: pseudotime
+  use_h5ad_mode: false
+  h5ad_path: null
+
+model:
+  name: scLifeMamba
+  rna_hidden_dims: [512, 256]
+  protein_hidden_dims: [64, 64]
+  hidden_dim: 128
+  embedding_dim: 64
+  dropout: 0.2
+  use_mamba: true
+  use_lstm: true
+  use_dynamic_fusion: true
+  mamba_d_state: 16
+  mamba_d_conv: 4
+  mamba_expand: 2
+  lstm_num_layers: 2
+
+loss:
+  lambda_ptime: 1.0
+  lambda_traj: 0.1
+  lambda_contrast: 0.1
+  use_cls_loss: true
+  use_ptime_loss: true
+  use_traj_loss: true
+  use_contrast_loss: true
+  ptime_loss_type: mse
+  contrast_temperature: 0.07
+
+training:
+  batch_size: 64
+  epochs: 20
+  lr: 0.0001
+  weight_decay: 0.00001
+  patience: 5
+  num_workers: 0
+  scheduler: cosine
+  scheduler_step_size: 10
+  scheduler_gamma: 0.5
+
+output:
+  root_dir: code/output

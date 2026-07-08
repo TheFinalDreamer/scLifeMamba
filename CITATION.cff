@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use scLifeMamba in your research, please cite the following."
+title: "scLifeMamba: Trajectory-aware Mamba-LSTM framework for single-cell multi-omics lifecycle state modeling"
+authors:
+  - family-names: Du
+    given-names: Wendong
+version: 0.1.0
+date-released: 2026-07-08
+repository-code: "https://github.com/TheFinalDreamer/scLifeMamba"
+license: MIT
+type: software

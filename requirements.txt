@@ -1,0 +1,14 @@
+numpy>=1.24
+pandas>=1.5
+scipy>=1.10
+scikit-learn>=1.2
+scanpy>=1.9
+anndata>=0.9
+torch>=2.0
+matplotlib>=3.7
+tqdm>=4.65
+pyyaml>=6.0
+h5py>=3.8
+umap-learn>=0.5
+networkx>=3.0
+scikit-misc>=0.2

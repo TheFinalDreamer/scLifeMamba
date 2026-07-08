@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+dist/
+build/
+*.egg
+
+# Data (large files)
+data/raw/
+data/processed/
+data/interim/
+data/external/
+*.h5ad
+*.h5
+*.loom
+*.mtx
+*.npy
+*.npz
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.ckpt
+
+# Outputs
+outputs/
+output/
+results/
+runs/
+checkpoints/
+logs/
+wandb/
+mlruns/
+
+# Manuscript and private documents
+manuscript/
+*.pdf
+*.docx
+*.xlsx
+*.pptx
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets
+*.key
+*.pem
+secrets/
+credentials/
+.env.local
