@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.utils.project_paths import PROJECT_ROOT, DATA_DIR, get_rerun_dir
 
 # === Config ===
-SOURCE_H5AD = r"C:\A-KuRuMi\学校专用\数据集存放专用\Hao PBMC multimodal\pbmc_seurat_v4.h5ad"
+SOURCE_H5AD = os.environ.get("SCLIFEMAMBA_H5AD",
+    str(DATA_DIR / "raw" / "pbmc_citeseq.h5ad"))
 N_HVG = 1000
 WINDOW_SIZE = 32
 N_PSEUDOTIME_BINS = 20

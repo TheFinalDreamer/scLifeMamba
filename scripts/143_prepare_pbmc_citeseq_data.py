@@ -8,10 +8,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.utils.project_paths import PROJECT_ROOT, DATA_DIR, get_recovery_dir
 
 CANDIDATE_PATHS = [
-    r"C:\A-KuRuMi\学校专用\数据集存放专用\Hao PBMC multimodal\pbmc_seurat_v4.h5ad",
-    r"C:\A-KuRuMi\学校专用\数据集存放专用\pbmc10k_raw.h5ad",
-    r"C:\A-KuRuMi\学校专用\数据集存放专用\10X_3-rep2.h5ad",
-    r"C:\A-KuRuMi\学校专用\数据集存放专用\Human PBMC Glaucoma Atlas.h5ad",
+    # Set SCLIFEMAMBA_DATA environment variable or edit paths below
+    os.path.expanduser("~/data/pbmc_citeseq/pbmc_seurat_v4.h5ad"),
+    os.path.expanduser("~/data/pbmc_citeseq/pbmc10k_raw.h5ad"),
+    str(DATA_DIR / "raw" / "pbmc_citeseq.h5ad"),
+    str(DATA_DIR / "processed" / "pbmc_citeseq.h5ad"),
 ]
 
 OUT_DIR = Path(PROJECT_ROOT) / "outputs" / "local_data_recovery"
