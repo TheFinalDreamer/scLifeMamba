@@ -1,42 +1,65 @@
 # Reproducibility
 
+This repository is aligned with the manuscript code availability statement.
+
 ## Environment
 
 - Python 3.10+
 - PyTorch 2.0+
-- Scanpy 1.9+
-- See `requirements.txt` for full dependency list
+- NumPy
+- Pandas
+- Scanpy
+- AnnData
+- scikit-learn
 
-## Backend selection
+Install with:
 
-| Environment | Backend | `mamba-ssm` required |
-|-------------|---------|---------------------|
-| Linux + CUDA | Native Mamba | Yes |
-| Windows / CPU | Fallback | No |
-
-The fallback backend uses a Conv1d + GRU approximation. When comparing modality contributions (protein-only vs RNA-only vs fusion), the same backend is used for all configurations, ensuring valid within-study comparisons.
-
-## Random seeds
-
-All experiments use fixed random seeds (42, 43, 44) for PyTorch, NumPy, and Python random. Seeds are set at the start of each experiment script.
-
-## Data split
-
-Train/validation/test split: 70% / 15% / 15%, random permutation with seed 42. The same split indices are used across all model configurations for a given task.
-
-## Experiment tracking
-
-Each run produces:
-
-```
-outputs/<task>/<timestamp>/
-├── run_status.json    # Completion status, model name, hyperparameters
-├── metrics.json       # Classification/regression metrics
-└── config.json        # Full runtime configuration
+```bash
+pip install -r requirements.txt
 ```
 
-## Expected variation
+## Data
 
-- Fallback vs native Mamba: Minor metric differences expected. Modality comparison conclusions are consistent across backends.
-- Seed variation: Small variance across 3 seeds; aggregate results are reported as mean across seeds.
-- Hardware: GPU vs CPU does not affect model output for the same seed and backend.
+Raw PBMC CITE-seq data are not redistributed. The expected processed directory is:
+
+```text
+data/processed/leakage_safe_v1/
+```
+
+Expected files:
+
+```text
+features_combined.npy
+rna_hvg_all.npy
+protein_norm_all.npy
+sequence_manifest.csv
+reference_sequence_manifest.parquet
+split_assignments.csv
+hvg_genes_train_only.txt
+```
+
+## Split And Preprocessing
+
+The manuscript uses a donor-held-out split:
+
+- 5 training donors
+- 2 validation donors
+- 1 test donor
+
+All preprocessing steps are fit on training donors only, including HVG selection, scaling, PCA, nearest-neighbor graph construction, diffusion pseudotime fitting, and lifecycle thresholding.
+
+## Backend
+
+The reported Mamba backend is `TorchSelectiveSSM`, implemented in `src/models/torch_selective_ssm.py`.
+
+`mamba_ssm` is not required for the manuscript results.
+
+## Commands
+
+```bash
+python scripts/run_final_audit_experiments.py --exp fair --epochs 10
+python scripts/run_final_audit_experiments.py --exp order --epochs 10
+python scripts/81_compute_baselines.py
+```
+
+Outputs are written under `outputs/`, which is intentionally ignored by Git.

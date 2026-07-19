@@ -1,57 +1,29 @@
-# Mamba backend
+# Mamba Backend
 
-scLifeMamba supports two backends for the Mamba state-space model block.
+The manuscript reports the `TorchSelectiveSSM` backend.
 
-## Native backend (production)
+## TorchSelectiveSSM
 
-Requires `mamba-ssm` and `causal-conv1d` packages:
+File:
 
-```bash
-pip install mamba-ssm causal-conv1d
+```text
+src/models/torch_selective_ssm.py
 ```
 
-These packages require:
-- Linux with CUDA toolkit
-- NVIDIA GPU with compute capability >= 7.0
-- PyTorch with CUDA support
+This is a native PyTorch implementation of selective state-space modeling. It includes:
 
-The native backend implements the selective state-space scanning described in Gu & Dao (2023). It provides linear-time sequence modeling and is used for full-scale training experiments.
+- input-dependent delta projection
+- input-dependent B and C projections
+- stable learned A parameterization
+- selective recurrence implemented in PyTorch
+- CUDA support through standard PyTorch tensors
 
-## Fallback backend (development)
+This repository provides the implementation used in the manuscript. It is not a wrapper around the Linux-only `mamba_ssm` package.
 
-Automatically used when `mamba-ssm` is not available. Implements:
+## Native mamba_ssm
 
-- Depthwise Conv1d with symmetric padding
-- SiLU activation
-- Gated projection (sigmoid gate)
-- GRU for sequence recurrence
-- Residual connection with LayerNorm
+The native CUDA package may be useful for future speed optimization on Linux systems, but it is not required here and is not listed in `requirements.txt`.
 
-The fallback is functionally similar but does not implement selective scanning. It is suitable for:
+## Runtime Selection
 
-- Code development and debugging
-- CPU-only environments (Windows, macOS)
-- Smoke tests and unit tests
-- Modality contribution comparisons (same backend for all configurations)
-
-## Switching backends
-
-Backend selection is automatic:
-
-```python
-from src.models.mamba_block import MambaBlock, is_mamba_available
-
-block = MambaBlock(dim=128)
-print(block.is_real_mamba)  # True if mamba-ssm is installed
-```
-
-No manual configuration is needed.
-
-## Reporting results
-
-When publishing results, specify which backend was used:
-
-- "Native Mamba" = `mamba-ssm` on Linux GPU
-- "Fallback" = Conv1d+GRU on any platform
-
-Modality comparison results (protein-only vs RNA-only vs fusion) are valid under either backend when all configurations use the same backend.
+`src/models/mamba_block.py` uses native `mamba_ssm` only if it is already installed. Otherwise it loads `TorchSelectiveSSMBlock`. A Conv1d/GRU diagnostic fallback remains available only when neither selective backend can be imported.

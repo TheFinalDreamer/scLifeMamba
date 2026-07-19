@@ -70,16 +70,40 @@ class FallbackMambaBlock(nn.Module):
 
 
 class MambaBlock(nn.Module):
-    """Unified Mamba block: real if available, fallback otherwise."""
+    """Unified Mamba-style block with validated backend selection.
 
-    def __init__(self, dim=128, d_state=16, d_conv=4, expand=2, dropout=0.1):
+    Priority:
+      1. RealMambaBlock (mamba_ssm) — requires mamba_ssm package (Linux)
+      2. TorchSelectiveSSMBlock — PyTorch-native selective SSM (cross-platform, validated)
+      3. FallbackMambaBlock — Conv1d+GRU (diagnostic/engineering only, NOT for formal results)
+    """
+
+    def __init__(self, dim=128, d_state=16, d_conv=4, expand=2, dropout=0.1, require_native=False):
         super().__init__()
-        self.is_real_mamba = is_mamba_available()
-        if self.is_real_mamba:
-            self._block = RealMambaBlock(dim, d_state, d_conv, expand)
-        else:
-            self._block = FallbackMambaBlock(dim, d_state, d_conv, expand, dropout)
         self.dim = dim
+        self.backend_name = None
+
+        if is_mamba_available():
+            self._block = RealMambaBlock(dim, d_state, d_conv, expand)
+            self.backend_name = "native_mamba_ssm"
+        else:
+            # Use validated PyTorch-native selective SSM (NOT fallback)
+            try:
+                from .torch_selective_ssm import TorchSelectiveSSMBlock
+                self._block = TorchSelectiveSSMBlock(dim, d_state, d_conv, expand, dropout)
+                self.backend_name = "torch_selective_ssm"
+            except ImportError:
+                if require_native:
+                    raise RuntimeError(
+                        "No selective SSM backend available: "
+                        "mamba_ssm not installed, torch_selective_ssm not importable. "
+                        "Cannot use fallback when require_native=True."
+                    )
+                self._block = FallbackMambaBlock(dim, d_state, d_conv, expand, dropout)
+                self.backend_name = "fallback_conv1d_gru"
 
     def forward(self, x):
         return self._block(x)
+
+    def get_backend(self):
+        return self.backend_name
