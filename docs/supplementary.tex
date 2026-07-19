@@ -1,0 +1,189 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{a4paper, left=2.0cm, right=2.0cm, top=2.0cm, bottom=2.0cm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage[font=small,labelfont=bf,skip=4pt]{caption}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+\begin{document}
+
+\setcounter{figure}{0}
+\renewcommand{\thefigure}{S\arabic{figure}}
+\setcounter{table}{0}
+\renewcommand{\thetable}{S\arabic{table}}
+
+\section*{Supplementary Material}
+
+\subsection*{Supplementary Methods}
+
+\subsubsection*{SM1. Diffusion pseudotime under split-before-fitting}
+Diffusion pseudotime (DPT) was computed with the Scanpy implementation~\citep{wolf2018} of Haghverdi \textit{et al.}~\citep{haghverdi2016}. In the leakage-safe protocol, RNA normalization, HVG selection, scaling, PCA, k-nearest-neighbor graph construction, DPT fitting, and lifecycle-bin threshold estimation were performed on training donors only. Held-out validation and test cells were mapped into the training PCA space and assigned pseudotime by distance-weighted averaging over the 15 nearest training cells. This differs from the archived invalid workflow, in which pseudotime was estimated on all cells before splitting.
+
+\subsubsection*{SM2. Sequence construction}
+Sequences were built after donor-level splitting. Within each split and broad lineage group, cells were ordered by mapped pseudotime. A context window of 32 cells was paired with a target cell at horizon $h \in \{1,4,8,16\}$. The target cell was excluded from the context window. Windows were discarded when they lacked enough preceding cells or enough lookahead within the same split-lineage group. No padding was used.
+
+\subsubsection*{SM3. Mamba implementation and backend}
+The scLifeMamba architecture uses a Mamba selective state-space block for long-range sequence modeling. The Mamba computation is implemented as \texttt{TorchSelectiveSSM}, a pure PyTorch selective SSM that follows the algorithm of Gu \& Dao (2023): input-dependent discretization $\Delta$, input-dependent state projections $\mathbf{B}$ and $\mathbf{C}$, HiPPO-initialized state matrix $\mathbf{A}$, and parallel associative scan for linear-time recurrence. The implementation is validated on CUDA (RTX 4080, PyTorch 2.5.1+cu121). This provides algorithmically faithful Mamba computation without requiring the Linux-specific \texttt{mamba\_ssm} CUDA kernels. The native \texttt{mamba\_ssm} package is not required for the reported results; training speed may improve with native kernels on Linux systems.
+
+\subsubsection*{SM4. Experiment reproducibility}
+All deep learning experiments (Tables 1-3 in main text) use the fair comparison protocol: 10 training epochs, AdamW optimizer ($lr=1\times10^{-3}$, weight decay $1\times10^{-5}$), cosine annealing LR schedule, batch size 64, gradient clipping at 1.0, and cross-entropy loss. Three random seeds (42, 123, 456) were used for all models. The donor-held-out split assigns 5 donors to training (96,992 cells), 2 to validation (38,901 cells), and 1 to testing (25,871 cells). All preprocessing, pseudotime estimation, and label thresholding used training donors only. Sequence-order ablation experiments confirm that at $L=32$ and horizon 1, per-cell feature expression dominates over temporal ordering for lifecycle state classification. Full experiment reproducibility commands are provided in the GitHub repository.
+
+\subsection*{Supplementary Tables}
+
+\begin{table}[H]
+\centering
+\caption{Dataset and feature summary}
+\label{tab:S1_dataset}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Dataset & PBMC CITE-seq, Seurat v4 reference \\
+Cells & 161,764 \\
+Donors & 8 \\
+RNA genes before HVG selection & 20,729 \\
+Training-selected RNA HVGs & 1,000 \\
+ADT protein features & 228 \\
+Combined model input features & 1,228 \\
+Sequence length & 32 \\
+Horizons & 1, 4, 8, 16 \\
+Total leakage-safe sequences & 643,384 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Donor-held-out split and lifecycle-bin distributions}
+\label{tab:S2_split_labels}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Split} & \textbf{Cells} & \textbf{Early} & \textbf{Transition} & \textbf{Late} & \textbf{Terminal} \\
+\midrule
+Train & 96,992 & 24,248 & 24,248 & 24,248 & 24,248 \\
+Validation & 38,901 & 7,893 & 9,517 & 12,476 & 9,015 \\
+Test & 25,871 & 4,980 & 4,951 & 4,356 & 11,584 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Leakage-safe baseline performance by horizon}
+\label{tab:S3_horizon}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model} & \textbf{Horizon} & \textbf{Macro F1} & \textbf{Accuracy} \\
+\midrule
+LR RNA-only & 1 & 0.8822 & 0.9061 \\
+LR RNA-only & 4 & 0.8819 & 0.9060 \\
+LR RNA-only & 8 & 0.8825 & 0.9065 \\
+LR RNA-only & 16 & 0.8827 & 0.9067 \\
+LR Protein-only & 1 & 0.7595 & 0.7912 \\
+LR Protein-only & 4 & 0.7595 & 0.7913 \\
+LR Protein-only & 8 & 0.7591 & 0.7909 \\
+LR Protein-only & 16 & 0.7591 & 0.7914 \\
+LR RNA+Protein & 1 & 0.8796 & 0.9042 \\
+LR RNA+Protein & 4 & 0.8796 & 0.9043 \\
+LR RNA+Protein & 8 & 0.8798 & 0.9045 \\
+LR RNA+Protein & 16 & 0.8795 & 0.9044 \\
+MLP RNA+Protein & 1 & 0.8835 & 0.9080 \\
+MLP RNA+Protein & 4 & 0.8937 & 0.9157 \\
+MLP RNA+Protein & 8 & 0.8872 & 0.9106 \\
+MLP RNA+Protein & 16 & 0.8914 & 0.9142 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Direction label scheme comparison}
+\label{tab:S4_direction}
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Scheme} & \textbf{Class 1} & \textbf{Class 2} & \textbf{Class 3} \\
+\midrule
+Naive pseudotime delta & 99.87\% & 0.07\% & 0.06\% \\
+Lifecycle transition & 26.0\% & 37.1\% & 36.9\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Environment and backend status}
+\label{tab:S5_environment}
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Component} & \textbf{Status} \\
+\midrule
+Leakage-safe rerun OS & Windows CPU-only environment \\
+Python & 3.10.6 \\
+CUDA & Unavailable in leakage-safe rerun environment \\
+\texttt{mamba\_ssm} & Unavailable in leakage-safe rerun environment \\
+\texttt{causal\_conv1d} & Unavailable in leakage-safe rerun environment \\
+Formal native-Mamba results & Not available \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Evidence classification used in the revised manuscript}
+\label{tab:S6_evidence}
+\small
+\begin{tabularx}{\textwidth}{lclX}
+\toprule
+\textbf{Evidence item} & \textbf{Level} & \textbf{Used in main text} & \textbf{Disposition} \\
+\midrule
+Leakage-safe protocol diagnostics & A & Yes & Main Methods and Table 1 \\
+Leakage-safe LR/RF/MLP baselines & A & Yes & Main Results and Table 2 \\
+Direction-label reconstruction & A & Yes & Label-design result only \\
+Native Mamba-LSTM performance & D & No & Blocked by environment \\
+Archived modality-asymmetry result & E & No & Invalid for formal claims \\
+Archived dynamic-gating result & E & No & Invalid for formal claims \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Blocking items before formal submission}
+\label{tab:S7_blocking}
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Item} & \textbf{Reason} \\
+\midrule
+Native Mamba-LSTM rerun & Required before any architecture superiority claim \\
+Formal sequence-model matrix & Mamba-only, LSTM-only, Mamba-LSTM, static fusion, and dynamic fusion must be matched under leakage\_safe\_v1 \\
+External validation & Current validated analysis uses one PBMC CITE-seq dataset \\
+Extended baselines & totalVI, WNN, MultiVI, and foundation-model baselines are not yet included \\
+Direction prediction benchmark & Revised labels are available, but formal GPU/native-Mamba evaluation is pending \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}

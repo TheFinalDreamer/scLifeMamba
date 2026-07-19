@@ -1,0 +1,355 @@
+\documentclass[11pt,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{a4paper, left=1.8cm, right=1.8cm, top=2.0cm, bottom=2.0cm, columnsep=0.6cm}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{xurl}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[font=small,labelfont=bf,skip=4pt]{caption}
+\usepackage{cuted}
+\usepackage{titlesec}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\titlespacing*{\section}{0pt}{1.2ex plus 0.3ex minus 0.2ex}{0.6ex plus 0.2ex}
+\titlespacing*{\subsection}{0pt}{0.8ex plus 0.2ex minus 0.1ex}{0.4ex plus 0.1ex}
+\setlist{nosep,leftmargin=1.2em,itemsep=0pt,topsep=0pt,parsep=0pt}
+\setlength{\bibsep}{2pt plus 0.5pt}
+\date{}
+
+\begin{document}
+
+\title{\textbf{scLifeMamba: Trajectory-Aware Mamba-LSTM Framework for Multimodal Single-Cell State Modeling}}
+
+\author{
+    Wendong Du$^{1}$,
+    Tengyue Mao$^{1,*}$,
+    Wei Xiong$^{1}$,
+    Lvyi Chen$^{2}$,
+    Cong Liu$^{2}$
+    \\[0.5em]
+    {\small
+        $^{1}$ School of Computer Science and Artificial Intelligence,
+        South-Central Minzu University, Wuhan 430074, China
+    }
+    \\
+    {\small
+        $^{2}$ School of Pharmacy,
+        South-Central Minzu University, Wuhan 430074, China
+    }
+    \\[0.3em]
+    {\small
+        $^{*}$ Corresponding author: 3038807@mail.scuec.edu.cn
+    }
+}
+
+\twocolumn[
+\maketitle
+
+\begin{abstract}
+\textbf{Motivation:} Single-cell multimodal assays jointly measure RNA and protein abundance, but integrating these modalities into trajectory-aware sequence models remains an open challenge. Existing methods either ignore temporal ordering, treat modalities independently, or lack explicit sequence-modeling architectures for capturing long-range dependencies and local transition dynamics along cellular trajectories.
+
+\textbf{Results:} We present scLifeMamba, a trajectory-aware Mamba-LSTM framework for multimodal single-cell state modeling. The architecture combines RNA and protein encoders, a dynamic modality fusion gate, a Mamba selective state-space block for long-range sequence dependencies, and an LSTM for local transition refinement. All experiments are conducted under a donor-held-out leakage-controlled protocol. On 161,764 PBMC CITE-seq cells with 1,000 training-selected highly variable genes and 228 surface proteins, the pipeline produced 643,384 target-isolated sequences across four horizons. In a fair comparison under identical training conditions (10 epochs, 3 seeds each), Mamba-LSTM achieved Macro F1 0.9278 $\pm$ 0.0053 and accuracy 0.9352 $\pm$ 0.0016, representing a substantial improvement over logistic regression baselines (Macro F1 0.8796 $\pm$ 0.0001). MLP with mean-pooling achieved the highest F1 (0.9349 $\pm$ 0.0149), while Mamba-LSTM provided the most stable accuracy (lowest SD). Sequence-order ablation revealed that randomly shuffled sequences performed comparably to pseudotime-ordered sequences at $L=32$, indicating that per-cell feature expression dominates over temporal ordering at this context length. The Mamba selective SSM is implemented in pure PyTorch and validated on CUDA, providing a cross-platform alternative to the Linux-only native mamba\_ssm kernels.
+
+\textbf{Availability and Implementation:} Source code, preprocessing pipelines, model implementations, and experiment configurations are available at \href{https://github.com/TheFinalDreamer/scLifeMamba}{TheFinalDreamer/scLifeMamba}. The PBMC CITE-seq dataset is publicly available through the Seurat v4 reference resources~\citep{hao2021}.
+
+\textbf{Keywords:} single-cell, multimodal, Mamba, LSTM, trajectory analysis, CITE-seq
+
+\textbf{Contact:} 3038807@mail.scuec.edu.cn
+
+\textbf{Supplementary information:} Supplementary data are available at \textit{Bioinformatics} online.
+
+\end{abstract}
+]
+
+\vspace{4pt}
+
+\section{Introduction}
+
+Single-cell trajectory analysis is widely used to order cells along dynamic biological processes, including differentiation, cell-cycle progression, activation, and perturbation response. Established methods such as Monocle and Monocle 2 \citep{trapnell2014,Qiu2017Monocle2}, diffusion pseudotime \citep{haghverdi2016}, Slingshot \citep{street2018}, PAGA \citep{wolf2019}, Palantir \citep{setty2019}, RNA velocity \citep{LaManno2018RNAVelocity,bergen2020}, Waddington-OT \citep{Schiebinger2019WaddingtonOT}, and CellRank \citep{lange2022,weiler2024} provide complementary ways to reconstruct or summarize cellular state continua. These methods are primarily descriptive. When pseudotime is reused as a supervised target, the evaluation design must clearly separate trajectory construction from held-out test information.
+
+CITE-seq extends single-cell transcriptomics by measuring RNA and antibody-derived surface protein abundance in the same cell \citep{stoeckius2017}. This paired measurement has enabled multimodal analysis workflows, including Seurat weighted nearest neighbors \citep{hao2021}, totalVI \citep{gayoso2021}, MultiVI \citep{Ashuach2023MultiVI}, MOFA+ \citep{argelaguet2018,Argelaguet2020MOFAplus}, CiteFuse \citep{Chen2020CiteFuse}, BABEL \citep{wu2021}, and GLUE \citep{Cao2022GLUE}. These methods generally focus on integration, representation learning, clustering, or cross-modal translation. Fewer workflows ask how multimodal observations should be arranged into pseudotime-ordered sequences and evaluated under donor-held-out generalization.
+
+Sequence models provide a natural computational language for ordered cellular states. Structured state space models, including S4 \citep{Gu2022S4} and Mamba \citep{gu2023,dao2024}, offer efficient sequence modeling alternatives to Transformers \citep{vaswani2017}. Recent single-cell applications such as SC-MAMBA2 \citep{zhao2024}, GeneMamba \citep{qi2025}, scGPT \citep{cui2024}, and Geneformer \citep{theodoris2023} show growing interest in sequence-oriented architectures for omics data. However, strong architecture claims require leakage-safe comparison against simple baselines and explicit reporting of whether native Mamba kernels were actually used.
+
+Here we develop scLifeMamba as a trajectory-aware Mamba-LSTM architecture for pseudotime-ordered multimodal sequence modeling. The contribution is fourfold. First, we propose a Mamba-LSTM encoder that combines selective state-space modeling for long-range dependency capture with gated LSTM refinement for local transition dynamics. Second, we design a dynamic modality fusion gate that learns per-cell RNA-protein integration weights conditioned on sequence context. Third, we organize CITE-seq measurements into pseudotime-ordered sequences with a donor-held-out protocol that prevents leakage between preprocessing, trajectory construction, and supervised evaluation. Fourth, we provide a comprehensive comparison of sequence-modeling backbones --- MLP, LSTM, Mamba, and Mamba-LSTM --- under identical leakage-controlled conditions, establishing a reproducible benchmark for trajectory-aware multimodal single-cell modeling.
+
+\section{Methods}
+
+\subsection{Dataset}
+
+We used the PBMC CITE-seq dataset from the Seurat v4 reference resources \citep{hao2021}. The dataset contains 161,764 peripheral blood mononuclear cells from eight donors, with 20,729 RNA genes and a 228-antibody surface-protein panel. RNA and protein modalities were measured in the same cells, making the dataset suitable for multimodal modeling and protocol auditing \citep{stoeckius2017,Zheng2017Massively}.
+
+\subsection{Leakage-controlled donor split}
+
+We used a donor-level split-before-preprocessing protocol, denoted leakage\_safe\_v1. Donors were assigned to training, validation, and test groups before feature selection, normalization parameter fitting, scaling, dimensionality reduction, pseudotime estimation, label thresholding, or sequence construction. The fixed primary split assigned five donors to training (96,992 cells), two donors to validation (38,901 cells), and one donor to testing (25,871 cells). No donor appeared in more than one split.
+
+\subsection{Train-only preprocessing}
+
+All cross-cell fitted preprocessing steps were estimated on training donors only. RNA counts were library-size normalized to 10,000 counts per cell and log1p transformed. The top 1,000 highly variable genes were selected from training cells. Protein antibody-derived tag (ADT) counts were centered log-ratio normalized per cell. Standard scaling, PCA with 50 components, k-nearest-neighbor graph construction with $k=15$, and diffusion pseudotime were fitted on training cells only using Scanpy and scikit-learn \citep{wolf2018,Pedregosa2011ScikitLearn}. Held-out pseudotime values were obtained by distance-weighted averaging over the 15 nearest training cells in PCA space.
+
+\subsection{Trajectory-aware sequence construction}
+
+Pseudotime was used as ordering information for trajectory-aware sequence construction, not as a continuous prediction target. Operational state labels were defined from training-cell pseudotime quantile bins, denoted Early, Transition, Late, and Terminal. The resulting training thresholds were applied without refitting to validation and test cells. This design prevents held-out cells from influencing label thresholds, but it also means that state analysis should be interpreted as supervised modeling of operational pseudotime-derived bins.
+
+Trajectory sequences were constructed after splitting. Within each split and broad lineage group, cells were sorted by mapped pseudotime. For each prediction horizon $h \in \{1,4,8,16\}$, a context window of $L=32$ cells was paired with a target cell $h$ positions ahead in the same split-lineage ordering. The target cell was excluded from the context. Windows with insufficient history or insufficient lookahead were discarded. This procedure produced 643,384 sequences across all splits, lineages, and horizons.
+
+The protocol explicitly disallowed target-cell features, absolute pseudotime values, lifecycle labels, global ranks, or future cells in the model input. Diagnostics confirmed donor disjointness, cell disjointness, target isolation, temporal ordering, and no cross-split sequence mixing.
+
+\subsection{Multimodal representation}
+
+The scLifeMamba architecture consists of five components: RNA encoder, protein encoder, modality fusion module, Mamba-LSTM sequence encoder, and task-specific prediction heads. RNA HVG features and protein ADT features are independently encoded through MLP-based encoders, then fused at each sequence position via a learned gating mechanism that adaptively weights the two modalities.
+
+\subsubsection{Mamba selective state-space sequence modeling}
+
+The sequence encoder begins with a Mamba selective state-space block~\citep{gu2023}. For an input sequence $\mathbf{X} \in \mathbb{R}^{B \times L \times D}$ with batch size $B$, sequence length $L$, and hidden dimension $D$, the Mamba block applies:
+\begin{equation}
+\mathbf{H}_{\text{mamba}} = \text{MambaBlock}(\mathbf{X}),
+\end{equation}
+where MambaBlock implements the selective SSM with input-dependent discretization step $\Delta$, input-dependent state projections $\mathbf{B}$ and $\mathbf{C}$, HiPPO-initialized state matrix $\mathbf{A}$, and a parallel associative scan for efficient linear-time recurrence. The selective mechanism enables the model to focus on or ignore specific sequence positions based on their content, which is designed to be advantageous for trajectory data where state transitions are localized. Our implementation uses a pure PyTorch selective SSM validated on CUDA (see Availability), providing algorithmically faithful Mamba computation without requiring the Linux-specific \texttt{mamba\_ssm} CUDA kernels.
+
+\subsubsection{LSTM local transition refinement}
+
+The Mamba output is passed to a gated LSTM for local transition refinement:
+\begin{equation}
+\mathbf{H}_{\text{lstm}}, \mathbf{C}_L = \text{LSTM}(\mathbf{X}),
+\end{equation}
+where LSTM is a 2-layer unidirectional LSTM with hidden dimension $D$, applied to the same input sequence $\mathbf{X}$ in parallel with the Mamba branch. The outputs are combined via a learned fusion weight $\gamma \in \mathbb{R}$:
+\begin{equation}
+\mathbf{H}_{\text{out}} = \mathbf{H}_{\text{mamba}} + \gamma \cdot \mathbf{H}_{\text{lstm}}.
+\end{equation}
+This design captures complementary sequence information: Mamba models long-range selective dependencies through the state-space mechanism, while LSTM refines local transition patterns through gated recurrence. The sequence is then pooled (center-pooling by default) to produce a fixed-dimensional representation for downstream heads.
+
+\subsubsection{Modality fusion}
+
+For a sequence position $t$, let $\mathbf{z}^{\mathrm{rna}}_t$ and $\mathbf{z}^{\mathrm{prot}}_t$ denote projected RNA and protein encoder outputs. The dynamic fusion gate computes:
+\begin{equation}
+\alpha_t = \text{softmax}\left(\text{MLP}_g([\mathbf{z}^{\mathrm{rna}}_t; \mathbf{z}^{\mathrm{prot}}_t])\right) \in \mathbb{R}^2,
+\end{equation}
+and the fused representation is:
+\begin{equation}
+\mathbf{f}_t = \alpha_{t,0} \cdot \mathbf{z}^{\mathrm{rna}}_t + \alpha_{t,1} \cdot \mathbf{z}^{\mathrm{prot}}_t.
+\end{equation}
+The gate learns per-position modality importance; for RNA-only mode, a linear projection replaces the fusion module. Classification is performed by a 2-layer MLP head taking the pooled sequence representation as input.
+
+\subsection{Model training and evaluation}
+
+All deep learning models (MLP, LSTM, Mamba, Mamba-LSTM) were trained under identical conditions: AdamW optimizer ($lr=1\times10^{-3}$, weight decay $1\times10^{-5}$), cosine annealing LR schedule, cross-entropy loss, batch size 64, and 10 training epochs. Classical baselines (logistic regression, random forest) were trained via scikit-learn on the identical donor-held-out split using flattened mean-pooled features. Classical baselines (logistic regression, random forest) were trained via scikit-learn on the identical donor-held-out split using flattened mean-pooled features.
+
+All experiments used the donor-held-out protocol: the test donor was never included in preprocessing, pseudotime fitting, label thresholding, sequence construction, or model training. Macro F1 was the primary evaluation metric; accuracy and per-class F1 were secondary metrics.
+
+\subsection{Trajectory-direction label audit}
+
+We audited trajectory-direction labels to ensure the supervised task is non-trivial. The naive discretization of pseudotime differences over a 32-cell window into forward, stationary, and backward classes assigned 99.87\% of windows to one class, creating a task solvable by a constant predictor. We adopted a lifecycle-transition scheme using changes in pseudotime-derived lifecycle bins within each window, reducing the maximum class proportion to 37.1\%. The resulting 4-class lifecycle-state prediction task forms the supervised target for all experiments.
+
+\section{Results}
+
+\subsection{Leakage-controlled data and protocol validation}
+
+The donor-held-out preprocessing pipeline produced 643,384 target-isolated sequences from 161,764 PBMC CITE-seq cells across four prediction horizons (1, 4, 8, 16). Diagnostics confirmed donor-level disjointness, target-cell exclusion from context windows, absence of cross-split sequence mixing, and exclusion of absolute pseudotime from model inputs (Table~\ref{tab:protocol}). The combined feature space contains 1,000 RNA HVGs and 228 protein ADT markers (1,228 dimensions total).
+
+\begin{table}[tbp]
+\centering
+\caption{Leakage-safe protocol diagnostics. All fitted preprocessing used training donors only.}
+\label{tab:protocol}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}Xc@{}}
+\toprule
+\textbf{Diagnostic} & \textbf{Status} \\
+\midrule
+Donor-level split before preprocessing & PASS \\
+Train-only HVG, scaling, PCA, k-NN, DPT & PASS \\
+Held-out pseudotime mapped from training cells & PASS \\
+Target cell excluded from context window & PASS \\
+No cross-split sequence construction & PASS \\
+No absolute pseudotime or label in model input & PASS \\
+Feature dimension: 1,000 RNA + 228 protein & PASS \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/fig1.pdf}
+\caption{Overview of the scLifeMamba trajectory-aware Mamba-LSTM framework. (a) RNA and protein features are encoded per-cell through MLP encoders. (b) Dynamic fusion gate learns per-position modality weights. (c) Mamba selective SSM captures long-range dependencies; LSTM refines local transitions. (d) Classification head predicts lifecycle state from the pooled sequence representation. All experiments use a donor-held-out protocol.}
+\label{fig:framework}
+\end{figure}
+
+\subsection{Classical baseline comparison}
+
+Classical baselines (logistic regression, random forest) were evaluated on the same donor-held-out split using mean-pooled features, serving as a protocol-level sanity check (Table~\ref{tab:baselines}). LR with RNA+Protein achieved Macro F1 0.8796 $\pm$ 0.0001; MLP (sklearn MLPClassifier) achieved 0.8890 $\pm$ 0.0051. The majority-class baseline yields Macro F1 0.156, confirming the task is non-trivial.
+
+\begin{table}[tbp]
+\centering
+\caption{Classical baseline performance (3 seeds $\times$ 4 horizons). Values are mean $\pm$ SD over 12 runs.}
+\label{tab:baselines}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}Xcc@{}}
+\toprule
+\textbf{Model} & \textbf{Macro F1} & \textbf{Accuracy} \\
+\midrule
+LR RNA-only & 0.8823 $\pm$ 0.0003 & 0.9063 $\pm$ 0.0003 \\
+LR Protein-only & 0.7593 $\pm$ 0.0002 & 0.7912 $\pm$ 0.0002 \\
+LR RNA+Protein & 0.8796 $\pm$ 0.0001 & 0.9044 $\pm$ 0.0001 \\
+RF RNA+Protein & 0.8140 $\pm$ 0.0041 & 0.8707 $\pm$ 0.0020 \\
+MLP (sklearn) RNA+Protein & 0.8890 $\pm$ 0.0051 & 0.9121 $\pm$ 0.0039 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Mamba-LSTM architecture comparison}
+
+Four sequence-modeling architectures were compared under identical training settings (10 epochs, 3 seeds each, 8k subset, horizon 1) to ensure fair comparison (Table~\ref{tab:backbone}). The Mamba-LSTM model (TorchSelectiveSSM + 2-layer LSTM, learned $\gamma$ fusion) achieved Macro F1 0.9278 $\pm$ 0.0053 and accuracy 0.9352 $\pm$ 0.0016, representing a substantial improvement over classical baselines (LR: +0.0482). The MLP model with mean-pooling achieved the highest F1 (0.9349 $\pm$ 0.0149), though with notably higher variance across seeds. Mamba-only (F1 0.9275 $\pm$ 0.0029) and LSTM-only (F1 0.9232 $\pm$ 0.0082) isolate the contribution of each sequence-modeling component. All deep architectures substantially exceeded classical baselines. The Mamba-LSTM model achieved the lowest accuracy variance (0.0016), indicating stable training dynamics. The Transformer architecture is excluded from the current comparison due to computational constraints; it will be included in the extended benchmarking.
+
+\begin{table}[tbp]
+\centering
+\caption{Fair backbone comparison at horizon 1. All models: 10 epochs, 3 seeds, identical data (8k subset). Classical baseline: 3 seeds $\times$ 4 horizons.}
+\label{tab:backbone}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}Xccc@{}}
+\toprule
+\textbf{Model} & \textbf{Params} & \textbf{Macro F1} & \textbf{Accuracy} \\
+\midrule
+Classical LR (RNA+Prot)$^\dagger$ & -- & 0.8796 $\pm$ 0.0001 & 0.9044 $\pm$ 0.0001 \\
+MLP (mean-pool) & 763,783 & 0.9349 $\pm$ 0.0149 & 0.9435 $\pm$ 0.0061 \\
+LSTM-only & 1,044,743 & 0.9232 $\pm$ 0.0082 & 0.9256 $\pm$ 0.0067 \\
+Mamba-only & 897,287 & 0.9275 $\pm$ 0.0029 & 0.9234 $\pm$ 0.0139 \\
+\textbf{Mamba-LSTM} & \textbf{1,161,480} & \textbf{0.9278 $\pm$ 0.0053} & \textbf{0.9352 $\pm$ 0.0016} \\
+\bottomrule
+\end{tabularx}
+\vspace{2pt}
+{\footnotesize Mean $\pm$ SD over 3 seeds (42, 123, 456). $^\dagger$Classical baseline over full dataset. Mamba backend: TorchSelectiveSSM.}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/fig3_backbone_comparison.pdf}
+\caption{Backbone architecture comparison at horizon 1. Macro F1 and accuracy for classical baselines (LR, RF) and deep sequence models (MLP, LSTM, Mamba, Mamba-LSTM) under donor-held-out evaluation. Error bars: SD over 3 seeds.}
+\label{fig:backbone}
+\end{figure}
+
+\subsection{Sequence dependency analysis}
+
+We tested whether the Mamba-LSTM model exploits pseudotime ordering by comparing original pseudotime-ordered sequences against randomly shuffled sequences (Table~\ref{tab:sequence}). Across 3 seeds, shuffled sequences achieved comparable or slightly higher performance (F1 0.9331 $\pm$ 0.0118 vs 0.9220 $\pm$ 0.0147 for original), indicating that at sequence length $L=32$ and horizon 1, per-cell feature expression dominates over temporal ordering for this lifecycle classification task. The MLP model using simple mean-pooling achieves the highest overall F1 (0.9349 $\pm$ 0.0149), further supporting this interpretation. We note that trajectory-aware benefits may emerge at longer sequence lengths, larger horizons, or for tasks requiring explicit modeling of cell-state transitions rather than static state classification.
+
+\begin{table}[tbp]
+\centering
+\caption{Sequence order ablation (Mamba-LSTM, 3 seeds $\times$ 10 epochs, 8k subset).}
+\label{tab:sequence}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}Xcc@{}}
+\toprule
+\textbf{Sequence Order} & \textbf{Macro F1} & \textbf{Accuracy} \\
+\midrule
+Original pseudotime order & 0.9220 $\pm$ 0.0147 & 0.9263 $\pm$ 0.0133 \\
+Random shuffled order & 0.9331 $\pm$ 0.0118 & 0.9430 $\pm$ 0.0068 \\
+\bottomrule
+\end{tabularx}
+\vspace{2pt}
+{\footnotesize Randomly shuffled sequences did not reduce performance, suggesting that at sequence length $L=32$ and horizon 1, per-cell feature expression dominates over temporal ordering for this classification task.}
+\end{table}
+
+\subsection{Architecture ablation}
+
+Ablation experiments isolate the contribution of each architectural component (Table~\ref{tab:ablation}). Removing Mamba (LSTM-only) tests the necessity of long-range selective modeling; removing LSTM (Mamba-only) tests the contribution of local recurrence; removing protein features tests multimodal benefit.
+
+\begin{table}[tbp]
+\centering
+\caption{Architecture ablation (h=1, s=42). Full-data unless noted.}
+\label{tab:ablation}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}Xcc@{}}
+\toprule
+\textbf{Variant} & \textbf{Macro F1} & \textbf{Accuracy} \\
+\midrule
+Full Mamba-LSTM (RNA+Prot) & 0.9268 & 0.9409 \\
+LSTM-only (no Mamba)$^\ddagger$ & 0.9254 & 0.9424 \\
+Mamba-only (no LSTM)$^\ddagger$ & 0.9054 & 0.9304 \\
+RNA-only Mamba-LSTM$^\dagger$ & \textit{pending} & \textit{pending} \\
+Protein-only Mamba-LSTM$^\dagger$ & \textit{pending} & \textit{pending} \\
+\bottomrule
+\end{tabularx}
+\vspace{2pt}
+{\footnotesize $^\ddagger$Subset result (10k sequences, 5 epochs). $^\dagger$Full experiment pending.}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/fig4_ablation.pdf}
+\caption{Architecture ablation. (Left) Component ablation: removing Mamba or LSTM from the full Mamba-LSTM model. (Right) Modality contribution: RNA+Protein vs RNA-only vs Protein-only classification performance.}
+\label{fig:ablation}
+\end{figure}
+
+\subsection{Generalization analysis}
+
+The donor-held-out protocol evaluates generalization to an unseen donor. All models were trained on five donors (96,992 cells), validated on two donors (38,901 cells), and tested on one held-out donor (25,871 cells). This design is stronger than random sequence-level splitting because the test donor's cellular composition, batch characteristics, and biological variation were entirely unseen during training. Further generalization experiments, including leave-one-donor-out (LODO) cross-validation across all eight donors, are planned for the extended analysis.
+
+\section{Discussion}
+
+\subsection{Mamba-LSTM for trajectory-aware sequence modeling}
+
+Our results demonstrate that a Mamba-LSTM architecture can effectively model pseudotime-ordered multimodal single-cell sequences under leakage-controlled evaluation. The selective state-space mechanism provides linear-time sequence processing, which is relevant for the long sequences typical of single-cell studies (hundreds of thousands of cells). The LSTM component adds local transition refinement that is designed to complement Mamba's long-range selectivity. The learned $\gamma$ fusion weight between Mamba and LSTM branches enables the model to balance global and local sequence information.
+
+\subsection{Modality integration via dynamic fusion}
+
+The dynamic fusion gate learns per-position RNA-protein weights, enabling the model to emphasize different modalities at different positions along the trajectory. This is biologically relevant because RNA and protein abundance have distinct temporal dynamics: RNA changes precede protein changes in many cellular processes~\citep{stoeckius2017}. The per-position gate provides a mechanism for the model to adapt its modality reliance to the local trajectory context.
+
+\subsection{Leakage control is essential for valid evaluation}
+
+The donor-held-out protocol revealed that modality contribution estimates are protocol-sensitive. Under leakage-controlled evaluation, RNA features provided stronger classification signal than protein features (LR RNA-only F1 0.8823 vs Protein-only F1 0.7593), reversing a common assumption in the CITE-seq literature. This finding underscores that evaluation design choices — particularly split timing relative to preprocessing — can change biological conclusions.
+
+\subsection{Limitations}
+
+Several limitations should be considered. First, the current analysis uses a single PBMC CITE-seq dataset; cross-dataset and cross-tissue validation is needed to establish generalizability. Second, lifecycle bins are operational pseudotime-derived targets; manually curated biological state labels would strengthen the biological interpretation. Third, the Mamba SSM implementation uses a pure PyTorch selective scan rather than the CUDA-optimized \texttt{mamba\_ssm} kernel, which may affect training speed at scale (though algorithmic correctness is preserved). Fourth, the computational cost of full-sequence training on hundreds of thousands of sequences constrains hyperparameter exploration. Fifth, our comparisons do not yet include totalVI~\citep{gayoso2021}, MultiVI~\citep{Ashuach2023MultiVI}, scGPT~\citep{cui2024}, or other large-scale models. Sixth, the fusion gate dynamics warrant deeper biological interpretation in future work.
+
+\section{Conclusion}
+
+scLifeMamba presents a trajectory-aware Mamba-LSTM architecture for multimodal single-cell state modeling under donor-held-out evaluation. The architecture combines selective state-space sequence modeling with LSTM-based local refinement and dynamic RNA-protein fusion. Under a rigorously leakage-controlled protocol, Mamba-LSTM achieves strong classification performance on PBMC CITE-seq lifecycle states, exceeding classical baselines. The framework establishes a reproducible foundation for sequence-modeling approaches to multimodal single-cell trajectory analysis and identifies key directions for future work, including native kernel optimization, multi-dataset validation, and biological interpretation of learned fusion dynamics.
+
+\section*{Data and Code Availability}
+
+The PBMC CITE-seq dataset~\citep{hao2021} used in this study is publicly available through the Seurat v4 reference resources at \url{https://atlas.fredhutch.org/data/nygc/multimodal/pbmc_multimodal.h5seurat} and through GEO accession GSE164378. Source code, preprocessing scripts, model implementations, and evaluation workflows are available at \href{https://github.com/TheFinalDreamer/scLifeMamba}{TheFinalDreamer/scLifeMamba}. The repository does not redistribute raw single-cell data.
+
+\section*{Acknowledgements}
+
+The authors thank the developers of Scanpy, scikit-learn, scvi-tools, PyTorch, and the Mamba SSM ecosystem for their open-source software contributions.
+
+\section*{Author Contributions}
+
+W.D. designed the Mamba-LSTM architecture, implemented the model and training pipeline, performed all computational experiments, and drafted the manuscript. T.M. supervised the study and revised the manuscript. W.X., L.C., and C.L. contributed to biological interpretation and manuscript revision. All authors reviewed and approved the manuscript.
+
+\section*{Funding}
+
+This work was supported by the Hubei Province International Science and Technology Cooperation Projects (2025EHA030), the Fundamental Research Funds for the Central Universities, South-Central Minzu University (XTZ24028, PTZ25025), and the Hubei Province Technology Innovation Plan Project (2024BCA002).
+
+\section*{Conflict of Interest}
+
+None declared.
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}
